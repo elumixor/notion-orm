@@ -157,14 +157,22 @@ function updateSourceIndexFile(databasesMetadata: CachedDatabaseMetadata[]): voi
   fs.writeFileSync(AST_FS_PATHS.sourceIndexTs, code);
 }
 
-async function generateDatabaseTypes(client: Client, databaseId: string): Promise<CachedDatabaseMetadata> {
-  // Resolve the data_source_id from the database_id.
-  // In the new Notion API, databases and data sources are different objects.
-  const database = await client.databases.retrieve({ database_id: databaseId });
-  const dataSources = (database as { data_sources?: { id: string; name: string }[] }).data_sources;
-  if (!dataSources || dataSources.length === 0) throw new Error(`No data sources found for database ${databaseId}`);
-  const dataSourceId = dataSources[0].id;
+async function resolveDataSourceId(client: Client, id: string): Promise<string> {
+  // The ID could be either a data_source_id or a database_id.
+  // Try dataSources first (direct), then fall back to databases.retrieve to look up the data_source_id.
+  try {
+    await client.dataSources.retrieve({ data_source_id: id });
+    return id;
+  } catch {
+    const database = await client.databases.retrieve({ database_id: id });
+    const dataSources = (database as { data_sources?: { id: string }[] }).data_sources;
+    if (!dataSources || dataSources.length === 0) throw new Error(`No data sources found for database ${id}`);
+    return dataSources[0].id;
+  }
+}
 
+async function generateDatabaseTypes(client: Client, databaseId: string): Promise<CachedDatabaseMetadata> {
+  const dataSourceId = await resolveDataSourceId(client, databaseId);
   const databaseObject = await client.dataSources.retrieve({ data_source_id: dataSourceId });
   const { databaseClassName, databaseName, databaseId: id } = await createTypescriptFileForDatabase(databaseObject);
   return {
