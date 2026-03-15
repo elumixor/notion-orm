@@ -11,12 +11,23 @@ import type {
 import {
   createCheckboxProperty,
   createDateProperty,
+  createFormulaProperty,
   createMultiOptionProp,
   createNumberProperty,
   createPropertyValuesArray,
+  createRollupProperty,
   createTextProperty,
   toPascalCase,
 } from "./ast-builders";
+
+const DATE_ROLLUP_FUNCTIONS = new Set(["date_range", "earliest_date", "latest_date"]);
+const ARRAY_ROLLUP_FUNCTIONS = new Set(["show_original", "show_unique"]);
+
+function getRollupType(fn: string): "number" | "date" | "array" {
+  if (DATE_ROLLUP_FUNCTIONS.has(fn)) return "date";
+  if (ARRAY_ROLLUP_FUNCTIONS.has(fn)) return "array";
+  return "number";
+}
 import { ZodMetadata } from "./zod-schema";
 
 export interface PropertyASTResult {
@@ -198,6 +209,34 @@ export const propertyASTGenerators = {
     zodMeta: {
       isRequired: false,
     },
+    enumConstStatement: undefined,
+  }),
+
+  formula: ({ camelizedName }) => ({
+    tsPropertySignature: createFormulaProperty(camelizedName),
+    zodMeta: { isRequired: false },
+    enumConstStatement: undefined,
+  }),
+
+  rollup: ({ camelizedName, columnValue }) => {
+    const rollupType = getRollupType(columnValue.rollup?.function ?? "");
+    return {
+      tsPropertySignature: createRollupProperty(camelizedName, rollupType),
+      zodMeta: { isRequired: false, rollupType },
+      enumConstStatement: undefined,
+    };
+  },
+
+  relation: ({ camelizedName }) => ({
+    tsPropertySignature: ts.factory.createPropertySignature(
+      undefined,
+      ts.factory.createIdentifier(camelizedName),
+      ts.factory.createToken(ts.SyntaxKind.QuestionToken),
+      ts.factory.createArrayTypeNode(
+        ts.factory.createKeywordTypeNode(ts.SyntaxKind.StringKeyword)
+      )
+    ),
+    zodMeta: { isRequired: false },
     enumConstStatement: undefined,
   }),
 } as const satisfies Record<SupportedNotionColumnType, PropertyASTGenerator>;

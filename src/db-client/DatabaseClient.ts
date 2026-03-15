@@ -3,7 +3,7 @@ import type {
   CreatePageParameters,
   CreatePageResponse,
   QueryDataSourceParameters,
-  QueryDataSourceResponse,
+  UpdatePageParameters,
 } from "@notionhq/client/build/src/api-endpoints";
 import type { ZodTypeAny } from "zod";
 import { AST_RUNTIME_CONSTANTS } from "../ast/constants";
@@ -11,7 +11,9 @@ import { buildPropertyValueForAddPage } from "./add";
 import { buildQueryResponse, recursivelyBuildFilter } from "./query";
 import type {
   Query,
-  SimpleQueryResponse,
+  QueryFilter,
+  QueryResult,
+  QueryResultType,
   SupportedNotionColumnType,
 } from "./queryTypes";
 
@@ -91,34 +93,153 @@ export class DatabaseClient<
     return await this.client.pages.create(callBody);
   }
 
-  // Look for page inside the database
-  public async query(
-    query: Query<DatabaseSchemaType, ColumnNameToColumnType>
-  ): Promise<SimpleQueryResponse<DatabaseSchemaType>> {
-    const queryCall: QueryDataSourceParameters = {
-      data_source_id: this.id,
-    };
+  // Update an existing page's properties
+  public async update(
+    id: string,
+    properties: Partial<DatabaseSchemaType>,
+    icon?: UpdatePageParameters["icon"]
+  ): Promise<void> {
+    const callBody: UpdatePageParameters = { page_id: id, properties: {} };
 
-    const filters = query.filter
-      ? recursivelyBuildFilter(
-          query.filter,
-          this.camelPropertyNameToNameAndTypeMap
-        )
-      : undefined;
-    if (filters) {
-      queryCall["sorts"] = query.sort ?? [];
-      // @ts-expect-error errors vs notion api types
-      queryCall["filter"] = filters;
+    if (icon !== undefined) callBody.icon = icon;
+
+    Object.entries(properties).forEach(([propertyName, value]) => {
+      const { type, columnName } = this.camelPropertyNameToNameAndTypeMap[propertyName];
+      const columnObject = buildPropertyValueForAddPage({ type, value });
+      if (callBody.properties && columnObject) {
+        callBody.properties[columnName] = columnObject;
+      }
+    });
+
+    await this.client.pages.update(callBody);
+  }
+
+  // Archive (delete) a page
+  public async delete(id: string): Promise<void> {
+    await this.client.pages.update({ page_id: id, archived: true });
+  }
+
+  // Find a page matching the filter and update it, or create it if not found
+  public async upsert(args: {
+    where: QueryFilter<DatabaseSchemaType, ColumnNameToColumnType>;
+    properties: DatabaseSchemaType;
+    icon?: CreatePageParameters["icon"];
+  }): Promise<{ created: boolean; id: string }> {
+    const queryCall = this.buildQueryCall({ filter: args.where });
+    const response = await this.client.dataSources.query({ ...queryCall, page_size: 1 });
+
+    if (response.results.length > 0) {
+      const existingId = response.results[0].id;
+      await this.update(existingId, args.properties, args.icon);
+      return { created: false, id: existingId };
     }
 
-    const response = await this.client.dataSources.query(queryCall);
-    const simplifiedResponse = buildQueryResponse<DatabaseSchemaType>(
-      response,
-      this.camelPropertyNameToNameAndTypeMap,
-      (result) => this.validateDatabaseSchema(result)
-    );
+    const created = await this.add({ properties: args.properties, icon: args.icon });
+    return { created: true, id: (created as { id: string }).id };
+  }
 
-    return simplifiedResponse;
+  // Look for page inside the database
+  public query<Args extends Query<DatabaseSchemaType, ColumnNameToColumnType> & { pagination: { pageSize: number } }>(
+    query: Args
+  ): AsyncIterable<QueryResultType<DatabaseSchemaType, Args>>;
+  public query<Args extends Omit<Query<DatabaseSchemaType, ColumnNameToColumnType>, "pagination">>(
+    query: Args
+  ): Promise<QueryResultType<DatabaseSchemaType, Args>[]>;
+  public query(query: Query<DatabaseSchemaType, ColumnNameToColumnType>): unknown {
+    const queryCall = this.buildQueryCall(query);
+    if (query.pagination) return this.paginatedIterable(queryCall, query);
+    return this.fetchAllPages(queryCall, query);
+  }
+
+  private buildQueryCall(query: Query<DatabaseSchemaType, ColumnNameToColumnType>): QueryDataSourceParameters {
+    const queryCall: QueryDataSourceParameters = { data_source_id: this.id };
+    if (query.sort?.length) {
+      queryCall["sorts"] = query.sort.map((s) => {
+        if (!("property" in s)) return s;
+        return { ...s, property: this.camelPropertyNameToNameAndTypeMap[s.property]?.columnName ?? s.property };
+      });
+    }
+    if (query.filter) {
+      // @ts-expect-error errors vs notion api types
+      queryCall["filter"] = recursivelyBuildFilter(query.filter, this.camelPropertyNameToNameAndTypeMap);
+    }
+    return queryCall;
+  }
+
+  private async fetchAllPages(
+    queryCall: QueryDataSourceParameters,
+    query: Query<DatabaseSchemaType, ColumnNameToColumnType>
+  ): Promise<QueryResult<DatabaseSchemaType>[]> {
+    const allResults: QueryResult<DatabaseSchemaType>[] = [];
+    let cursor: string | undefined;
+    let isFirst = true;
+
+    do {
+      const response = await this.client.dataSources.query({ ...queryCall, start_cursor: cursor, page_size: 100 });
+      const page = buildQueryResponse<DatabaseSchemaType>(
+        response,
+        this.camelPropertyNameToNameAndTypeMap,
+        isFirst ? (r) => this.validateDatabaseSchema(r) : () => {}
+      );
+      isFirst = false;
+
+      allResults.push(...this.applySelectOmit(page, query.select, query.omit));
+      cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+    } while (cursor && (!query.limit || allResults.length < query.limit));
+
+    return query.limit ? allResults.slice(0, query.limit) : allResults;
+  }
+
+  private paginatedIterable(
+    queryCall: QueryDataSourceParameters,
+    query: Query<DatabaseSchemaType, ColumnNameToColumnType>
+  ): AsyncIterable<QueryResult<DatabaseSchemaType>> {
+    const self = this;
+    const pageSize = query.pagination!.pageSize;
+
+    return {
+      [Symbol.asyncIterator]: async function* () {
+        let cursor: string | undefined;
+        let isFirst = true;
+        let yielded = 0;
+
+        do {
+          const response = await self.client.dataSources.query({ ...queryCall, start_cursor: cursor, page_size: pageSize });
+
+          const page = buildQueryResponse<DatabaseSchemaType>(
+            response,
+            self.camelPropertyNameToNameAndTypeMap,
+            isFirst ? (r) => self.validateDatabaseSchema(r) : () => {}
+          );
+          isFirst = false;
+
+          for (const item of self.applySelectOmit(page, query.select, query.omit)) {
+            yield item;
+            if (query.limit && ++yielded >= query.limit) return;
+          }
+
+          cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+        } while (cursor);
+      },
+    };
+  }
+
+  private applySelectOmit(
+    results: QueryResult<DatabaseSchemaType>[],
+    select?: Partial<Record<keyof DatabaseSchemaType, true>>,
+    omit?: Partial<Record<keyof DatabaseSchemaType, true>>
+  ): QueryResult<DatabaseSchemaType>[] {
+    if (!select && !omit) return results;
+    return results.map((result) => {
+      const out: Record<string, unknown> = { id: result.id };
+      if (select) {
+        for (const key of Object.keys(select)) if (key in result) out[key] = (result as Record<string, unknown>)[key];
+      } else if (omit) {
+        for (const key of Object.keys(result) as string[])
+          if (key !== "id" && !(omit as Record<string, unknown>)[key]) out[key] = (result as Record<string, unknown>)[key];
+      }
+      return out as QueryResult<DatabaseSchemaType>;
+    });
   }
 
   private validateDatabaseSchema(result: Partial<DatabaseSchemaType>) {
@@ -160,6 +281,7 @@ export class DatabaseClient<
 
     // Check for unexpected properties
     for (const remoteColName of remoteColumnNames) {
+      if (remoteColName === "id") continue;
       if (!this.camelPropertyNameToNameAndTypeMap[remoteColName]) {
         const issueSignature = JSON.stringify({
           type: "unexpected_property",

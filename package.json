@@ -3,15 +3,24 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Bring Notion database schemas/types to TypeScript",
-  "main": "src/index.js",
-  "types": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/public-api.d.ts",
   "bin": {
-    "notion": "src/cli/index.ts"
+    "notion": "dist/cli.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "bun run build:bundle && bun run build:declaration",
+    "build:bundle": "bun build ./src/public-api.ts --target=node --outdir ./dist --entry-naming index.[ext] && bun build ./src/cli/index.ts --target=bun --outdir ./dist --entry-naming cli.[ext]",
+    "build:declaration": "tsc --project tsconfig.build.json",
     "generate": "bun src/cli/index.ts generate",
     "lint": "biome lint .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "release:patch": "npm version patch -m \"Release v%s\" && git push --follow-tags",
+    "release:minor": "npm version minor -m \"Release v%s\" && git push --follow-tags",
+    "release:major": "npm version major -m \"Release v%s\" && git push --follow-tags"
   },
   "license": "ISC",
   "devDependencies": {

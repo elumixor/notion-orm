@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { getNotionConfig, loadConfig, clearConfigCache } from "../config/loadConfig";
+import { loadConfig, clearConfigCache } from "../config/loadConfig";
 import { createDatabaseTypes } from "../ast/generate-databases-cli";
 import { validateAndGetUndashedUuid, writeConfigFileWithAST, isHelpCommand } from "./helpers";
 import { findConfigFile, initializeNotionConfigFile, validateConfig } from "config/helpers";
@@ -21,7 +21,7 @@ async function runGenerate(): Promise<void> {
   }
 }
 
-async function runAdd(input: string): Promise<void> {
+async function runAdd(name: string, input: string): Promise<void> {
   const undashedUuid = validateAndGetUndashedUuid(input);
   if (!undashedUuid) {
     console.error("❌ Invalid database ID or URL format");
@@ -35,17 +35,17 @@ async function runAdd(input: string): Promise<void> {
   }
 
   const config = await loadConfig(configFile.path);
-  if (!config.databaseIds) config.databaseIds = [];
+  const existing = config.databases ?? {};
 
-  if (config.databaseIds.includes(undashedUuid)) {
+  if (Object.values(existing).includes(undashedUuid)) {
     console.log(`⚠️  Database ID already in config — regenerating types...`);
   } else {
-    const wasModified = writeConfigFileWithAST(configFile.path, undashedUuid);
+    const wasModified = writeConfigFileWithAST(configFile.path, name, undashedUuid);
     if (wasModified) console.log("🔗 Added database to config");
   }
 
   clearConfigCache();
-  const { databaseNames } = await createDatabaseTypes({ type: "incremental", id: undashedUuid });
+  const { databaseNames } = await createDatabaseTypes({ type: "incremental", name, id: undashedUuid });
   if (databaseNames.length > 0) console.log(`✅ Generated schema for '${databaseNames[0]}'`);
   console.log("\n📄 Run `notion generate` to refresh all schemas.");
 }
@@ -55,7 +55,7 @@ function showHelp(): void {
 Usage:
   notion init                       - Create notion.config.ts
   notion generate                   - Generate types from configured databases
-  notion add <database-id-or-url>   - Add database and generate types`);
+  notion add <name> <database-id-or-url>   - Add database and generate types`);
 }
 
 async function main() {
@@ -63,7 +63,7 @@ async function main() {
 
   if (args[0] === "init") return await initializeNotionConfigFile();
   if (args[0] === "generate") return await runGenerate();
-  if (args[0] === "add" && args[1]) return await runAdd(args[1]);
+  if (args[0] === "add" && args[1] && args[2]) return await runAdd(args[1], args[2]);
   if (isHelpCommand(args)) return showHelp();
 
   showHelp();

@@ -24,17 +24,14 @@ import { type ZodMetadata, createZodSchema } from "./zod-schema";
 
 type CamelPropertyNameToNameAndTypeMap = Record<string, { columnName: string; type: DatabasePropertyType }>;
 
-export async function createTypescriptFileForDatabase(dataSourceResponse: GetDataSourceResponse) {
+export async function createTypescriptFileForDatabase(dataSourceResponse: GetDataSourceResponse, name: string) {
   const { id: dataSourceId, properties } = dataSourceResponse;
 
   const camelPropertyNameToNameAndTypeMap: CamelPropertyNameToNameAndTypeMap = {};
   const enumConstStatements: ts.Statement[] = [];
   const zodColumns: ZodMetadata[] = [];
 
-  const databaseName: string =
-    "title" in dataSourceResponse ? dataSourceResponse.title[0].plain_text : "DEFAULT_DATABASE_NAME";
-
-  const databaseClassName = camelize(databaseName);
+  const databaseClassName = name;
   const databaseColumnTypeProps: ts.TypeElement[] = [];
 
   Object.entries(properties).forEach(([propertyName, value], index) => {
@@ -85,7 +82,7 @@ export async function createTypescriptFileForDatabase(dataSourceResponse: GetDat
     createColumnNameToColumnProperties(camelPropertyNameToNameAndTypeMap),
     createColumnNameToColumnType(),
     createQueryTypeExport(),
-    createDatabaseClassExport({ databaseName: databaseClassName, schemaIdentifier, schemaTitle: databaseName }),
+    createDatabaseClassExport({ databaseName: databaseClassName, schemaIdentifier, schemaTitle: databaseClassName }),
     ...createClassSpecificTypeExports({ databaseName: databaseClassName, schemaIdentifier }),
   ]);
 
@@ -99,5 +96,5 @@ export async function createTypescriptFileForDatabase(dataSourceResponse: GetDat
     ts.transpile(code, { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ESNext }),
   );
 
-  return { databaseName, databaseClassName, databaseId: dataSourceId };
+  return { databaseClassName, databaseId: dataSourceId };
 }

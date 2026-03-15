@@ -5,7 +5,6 @@
 import type {
   DataSourceObjectResponse,
   QueryDataSourceParameters,
-  QueryDataSourceResponse,
 } from "@notionhq/client/build/src/api-endpoints";
 
 type NotionPropertyTypeToConfigMap = DataSourceObjectResponse["properties"];
@@ -14,17 +13,17 @@ export type DatabasePropertyType =
 
 export const SUPPORTED_PROPERTY_TYPES = {
   // These are currently not supported by our package
-  formula: false,
   files: false,
   people: false,
-  relation: false,
-  rollup: false,
+  rollup: true,
   created_by: false,
   last_edited_by: false,
   created_time: false,
   last_edited_time: false,
 
   // Working property types
+  formula: true,
+  relation: true,
   url: true,
   phone_number: true,
   title: true,
@@ -167,6 +166,10 @@ export type Query<
 > = {
   filter?: QueryFilter<Y, T>;
   sort?: QueryDataSourceParameters["sorts"];
+  select?: Partial<Record<keyof Y, true>>;
+  omit?: Partial<Record<keyof Y, true>>;
+  limit?: number;
+  pagination?: { pageSize: number };
 };
 
 export type apiFilterQuery = {
@@ -198,7 +201,12 @@ type apiOrFilter = {
   or: Array<apiFilterType>;
 };
 
-export type SimpleQueryResponse<DatabaseSchema> = {
-  results: Partial<DatabaseSchema>[];
-  rawResponse: QueryDataSourceResponse;
-};
+export type QueryResult<DatabaseSchema> = Partial<DatabaseSchema> & { id: string };
+
+export type QueryResultType<Y, Args> =
+  Args extends { select: infer S extends Record<string, unknown> }
+    ? { [K in Extract<keyof S, keyof Y>]?: Y[K] } & { id: string }
+    : Args extends { omit: infer O extends Record<string, unknown> }
+    ? { [K in Exclude<keyof Y, keyof O>]?: Y[K] } & { id: string }
+    : Partial<Y> & { id: string };
+

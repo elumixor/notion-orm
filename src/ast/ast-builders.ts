@@ -27,6 +27,47 @@ export function createTextProperty(args: { name: string; isTitle: boolean }) {
 }
 
 /**
+ * Generate rollup property signature based on rollup function type
+ */
+export function createRollupProperty(name: string, rollupType: "number" | "date" | "array") {
+  let typeNode: ts.TypeNode;
+  if (rollupType === "date") {
+    typeNode = ts.factory.createTypeLiteralNode([
+      ts.factory.createPropertySignature(undefined, "start", undefined, ts.factory.createKeywordTypeNode(ts.SyntaxKind.StringKeyword)),
+      ts.factory.createPropertySignature(undefined, "end", ts.factory.createToken(ts.SyntaxKind.QuestionToken), ts.factory.createKeywordTypeNode(ts.SyntaxKind.StringKeyword)),
+    ]);
+  } else if (rollupType === "array") {
+    typeNode = ts.factory.createArrayTypeNode(ts.factory.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword));
+  } else {
+    typeNode = ts.factory.createKeywordTypeNode(ts.SyntaxKind.NumberKeyword);
+  }
+  return ts.factory.createPropertySignature(
+    undefined,
+    ts.factory.createIdentifier(name),
+    ts.factory.createToken(ts.SyntaxKind.QuestionToken),
+    ts.factory.createUnionTypeNode([typeNode, ts.factory.createLiteralTypeNode(ts.factory.createNull())])
+  );
+}
+
+/**
+ * Generate formula property signature
+ * name?: string | number | boolean | null
+ */
+export function createFormulaProperty(name: string) {
+  return ts.factory.createPropertySignature(
+    undefined,
+    ts.factory.createIdentifier(name),
+    ts.factory.createToken(ts.SyntaxKind.QuestionToken),
+    ts.factory.createUnionTypeNode([
+      ts.factory.createKeywordTypeNode(ts.SyntaxKind.StringKeyword),
+      ts.factory.createKeywordTypeNode(ts.SyntaxKind.NumberKeyword),
+      ts.factory.createKeywordTypeNode(ts.SyntaxKind.BooleanKeyword),
+      ts.factory.createLiteralTypeNode(ts.factory.createNull()),
+    ])
+  );
+}
+
+/**
  * Generate number property signature
  * name?: number
  */

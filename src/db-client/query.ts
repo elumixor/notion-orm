@@ -3,7 +3,6 @@ import type {
   apiFilterType,
   apiSingleFilter,
   QueryFilter,
-  SimpleQueryResponse,
   SingleFilter,
   SupportedNotionColumnType,
 } from "./queryTypes";
@@ -17,11 +16,8 @@ export function buildQueryResponse<DatabaseSchemaType extends Record<string, any
   res: QueryDataSourceResponse,
   camelPropertyNameToNameAndTypeMap: camelPropertyNameToNameAndTypeMapType,
   validateSchema: (result: Partial<DatabaseSchemaType>) => void
-): SimpleQueryResponse<DatabaseSchemaType> {
-  const rawResults = res.results;
-  const rawResponse = res;
-
-  const results: Array<Partial<DatabaseSchemaType>> = rawResults
+): (Partial<DatabaseSchemaType> & { id: string })[] {
+  const results: Array<Partial<DatabaseSchemaType>> = res.results
     .map((result, index) => {
       if (result.object === "page" && !("properties" in result)) {
         // biome-ignore lint/suspicious/noConsole: surfaced for debugging
@@ -30,7 +26,7 @@ export function buildQueryResponse<DatabaseSchemaType extends Record<string, any
         return undefined;
       }
 
-      const simpleResult: Partial<DatabaseSchemaType> = {};
+      const simpleResult = { id: result.id } as Partial<DatabaseSchemaType> & { id: string };
       const properties = Object.entries(result.properties);
 
       for (const [columnName, result] of properties) {
@@ -54,10 +50,7 @@ export function buildQueryResponse<DatabaseSchemaType extends Record<string, any
     })
     .filter((result) => result !== undefined);
 
-  return {
-    results,
-    rawResponse,
-  };
+  return results as (Partial<DatabaseSchemaType> & { id: string })[];
 }
 
 /**
@@ -123,6 +116,27 @@ export function getResponseValue(
     case "number": {
       const { number } = x;
       return number;
+    }
+    case "formula": {
+      const { formula } = x;
+      if (!formula) return null;
+      if (formula.type === "date") return formula.date;
+      return formula[formula.type] ?? null;
+    }
+    case "rollup": {
+      const { rollup } = x;
+      if (!rollup) return null;
+      switch (rollup.type) {
+        case "number": return rollup.number;
+        case "date": return rollup.date;
+        case "array": return rollup.array;
+        default: return null;
+      }
+    }
+    case "relation": {
+      const { relation } = x;
+      if (!Array.isArray(relation)) return null;
+      return relation.map(({ id }: { id: string }) => id);
     }
     default: {
       return null;

@@ -11,8 +11,12 @@ const __dirname = path.dirname(__filename);
 // Package root: src/ast/ → src/ → package root
 const PACKAGE_ROOT = path.resolve(__dirname, "../../");
 
-/** Generated DB files directory */
-export const DATABASES_DIR = path.join(PACKAGE_ROOT, "generated");
+// When running in development (cwd is the package itself), use relative import paths.
+// When installed externally, use the package name so generated files resolve correctly.
+const IS_DEV = process.cwd() === PACKAGE_ROOT;
+
+/** Generated DB files directory — always relative to the consuming project */
+export const DATABASES_DIR = path.join(process.cwd(), "generated");
 
 /** File system paths for CLI output */
 export const AST_FS_PATHS = {
@@ -23,7 +27,7 @@ export const AST_FS_PATHS = {
 
   /** src/index.ts — the dynamic barrel rewritten on every generate */
   get sourceIndexTs() {
-    return path.join(PACKAGE_ROOT, "src", "index.ts");
+    return path.join(process.cwd(), "src", "index.ts");
   },
 
   /** generated/index.ts — barrel exporting all DB clients */
@@ -39,8 +43,8 @@ export const AST_FS_FILENAMES = {
 
 /** Import path strings used when generating TypeScript code */
 export const AST_IMPORT_PATHS = {
-  DATABASE_CLIENT: "../src/db-client/DatabaseClient",
-  QUERY_TYPES: "../src/db-client/queryTypes",
+  DATABASE_CLIENT: IS_DEV ? "../src/db-client/DatabaseClient" : "@elumixor/notion-orm",
+  QUERY_TYPES: IS_DEV ? "../src/db-client/queryTypes" : "@elumixor/notion-orm",
   ZOD: "zod",
 
   databaseClass(className: string): string {

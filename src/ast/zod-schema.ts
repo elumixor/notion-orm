@@ -14,6 +14,7 @@ export interface ZodMetadata {
   isRequired: boolean;
   options?: string[];
   propertyValuesIdentifier?: string;
+  rollupType?: "number" | "date" | "array";
 }
 
 export function createZodSchema(args: {
@@ -92,6 +93,53 @@ export function createZodPropertyExpression(column: ZodMetadata) {
         optional,
         nullable: true,
       });
+    }
+    case "formula": {
+      const unionExpr = ts.factory.createCallExpression(
+        ts.factory.createPropertyAccessExpression(
+          ts.factory.createIdentifier("z"),
+          ts.factory.createIdentifier("union")
+        ),
+        undefined,
+        [
+          ts.factory.createArrayLiteralExpression([
+            createZodPrimitiveCall("string"),
+            createZodPrimitiveCall("number"),
+            createZodPrimitiveCall("boolean"),
+          ]),
+        ]
+      );
+      return applyOptionalNullable(unionExpr, { optional, nullable: true });
+    }
+    case "rollup": {
+      switch (column.rollupType) {
+        case "date":
+          return createZodDateExpression(optional);
+        case "array":
+          return applyOptionalNullable(
+            ts.factory.createCallExpression(
+              ts.factory.createPropertyAccessExpression(ts.factory.createIdentifier("z"), "array"),
+              undefined,
+              [createZodPrimitiveCall("unknown")]
+            ),
+            { optional, nullable: true }
+          );
+        default: // "number" or unknown function
+          return applyOptionalNullable(createZodPrimitiveCall("number"), { optional, nullable: true });
+      }
+    }
+    case "relation": {
+      return applyOptionalNullable(
+        ts.factory.createCallExpression(
+          ts.factory.createPropertyAccessExpression(
+            ts.factory.createIdentifier("z"),
+            ts.factory.createIdentifier("array")
+          ),
+          undefined,
+          [createZodPrimitiveCall("string")]
+        ),
+        { optional, nullable: true }
+      );
     }
     default: {
       return applyOptionalNullable(createZodPrimitiveCall("unknown"), {

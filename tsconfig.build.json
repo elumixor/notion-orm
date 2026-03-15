@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationDir": "dist",
+    "allowImportingTsExtensions": false,
+    "rootDir": "src"
+  },
+  "include": ["src/public-api.ts", "src/db-client/**/*", "src/config/helpers.ts"]
+}

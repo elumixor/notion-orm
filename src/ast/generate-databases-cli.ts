@@ -33,7 +33,7 @@ function writeDatabaseMetadata(metadata: CachedDatabaseMetadata[]): void {
 
 type CreateDatabaseTypesOptions =
   | { type: "all" }
-  | { type: "incremental"; id: string };
+  | { type: "incremental"; name: string; id: string };
 
 export const createDatabaseTypes = async (
   options: CreateDatabaseTypesOptions,
@@ -48,10 +48,12 @@ export const createDatabaseTypes = async (
   const client = new Client({ auth: config.auth, notionVersion: AST_RUNTIME_CONSTANTS.NOTION_API_VERSION });
 
   const isFullGenerate = options.type === "all";
-  const targetIds = isFullGenerate ? config.databaseIds : [options.id];
+  const targets: [name: string, id: string][] = isFullGenerate
+    ? Object.entries(config.databases)
+    : [[options.name, options.id]];
 
-  if (targetIds.length === 0) {
-    console.error("No database IDs configured. Add some to notion.config.ts");
+  if (targets.length === 0) {
+    console.error("No databases configured. Add some to notion.config.ts");
     process.exit(1);
   }
 
@@ -62,18 +64,18 @@ export const createDatabaseTypes = async (
     console.log("🔄 Updating all database schemas...");
     metadataMap = new Map();
   } else {
-    metadataMap = prepareIncrementalMetadata(config.databaseIds);
+    metadataMap = prepareIncrementalMetadata(config.databases);
   }
 
   const databaseNames: string[] = [];
 
-  for (const databaseId of targetIds) {
+  for (const [name, databaseId] of targets) {
     try {
-      const dbMeta = await generateDatabaseTypes(client, databaseId);
+      const dbMeta = await generateDatabaseTypes(client, name, databaseId);
       metadataMap.set(dbMeta.id, dbMeta);
-      databaseNames.push(dbMeta.displayName);
+      databaseNames.push(dbMeta.className);
     } catch (error) {
-      console.error(`❌ Error generating types for: ${databaseId}`);
+      console.error(`❌ Error generating types for: ${name}`);
       console.error(error);
       return { databaseNames: [] };
     }
@@ -169,37 +171,37 @@ function updateSourceIndexFile(databasesMetadata: CachedDatabaseMetadata[]): voi
 }
 
 async function resolveDataSourceId(client: Client, id: string): Promise<string> {
-  // The ID could be either a data_source_id or a database_id.
-  // Try dataSources first (direct), then fall back to databases.retrieve to look up the data_source_id.
+  // Try databases.retrieve first (common case: user provides a database_id).
+  // Fall back to treating the id as a data_source_id directly.
   try {
-    await client.dataSources.retrieve({ data_source_id: id });
-    return id;
-  } catch {
     const database = await client.databases.retrieve({ database_id: id });
     const dataSources = (database as { data_sources?: { id: string }[] }).data_sources;
-    if (!dataSources || dataSources.length === 0) throw new Error(`No data sources found for database ${id}`);
-    return dataSources[0].id;
+    if (dataSources && dataSources.length > 0) return dataSources[0].id;
+  } catch {
+    // not a database_id, fall through
   }
+  await client.dataSources.retrieve({ data_source_id: id });
+  return id;
 }
 
-async function generateDatabaseTypes(client: Client, databaseId: string): Promise<CachedDatabaseMetadata> {
+async function generateDatabaseTypes(client: Client, name: string, databaseId: string): Promise<CachedDatabaseMetadata> {
   const dataSourceId = await resolveDataSourceId(client, databaseId);
   const databaseObject = await client.dataSources.retrieve({ data_source_id: dataSourceId });
-  const { databaseClassName, databaseName, databaseId: id } = await createTypescriptFileForDatabase(databaseObject);
+  const { databaseClassName, databaseId: id } = await createTypescriptFileForDatabase(databaseObject, name);
   return {
     id,
     className: databaseClassName,
-    displayName: databaseName,
-    camelCaseName: databaseClassName.charAt(0).toLowerCase() + databaseClassName.slice(1),
+    displayName: databaseClassName,
+    camelCaseName: databaseClassName,
   };
 }
 
-function prepareIncrementalMetadata(configDatabaseIds: string[]): Map<string, CachedDatabaseMetadata> {
+function prepareIncrementalMetadata(databases: Record<string, string>): Map<string, CachedDatabaseMetadata> {
   const cached = readDatabaseMetadata();
-  const configIdsSet = new Set(configDatabaseIds);
+  const configNames = new Set(Object.keys(databases));
   const map = new Map<string, CachedDatabaseMetadata>();
   for (const db of cached) {
-    if (configIdsSet.has(db.id)) map.set(db.id, db);
+    if (configNames.has(db.className)) map.set(db.id, db);
   }
   return map;
 }

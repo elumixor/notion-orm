@@ -1,4 +1,11 @@
+src
+generated
 .env
+.env.local
 .gitignore
 tsconfig.json
-databases/*
+tsconfig.build.json
+notion.config.ts
+test.ts
+biome.json
+bun.lock

@@ -4,7 +4,7 @@ import { getNotionConfig } from "./loadConfig";
 
 export type NotionConfigType = {
   auth: string;
-  databaseIds: string[];
+  databases: Record<string, string>;
 };
 
 export async function validateConfig(): Promise<void> {
@@ -14,8 +14,8 @@ export async function validateConfig(): Promise<void> {
     console.error("❌ Missing 'auth' in config. Add your Notion integration token.");
     process.exit(1);
   }
-  if (!Array.isArray(config.databaseIds) || config.databaseIds.length === 0) {
-    console.error("❌ 'databaseIds' must be a non-empty array in config.");
+  if (!config.databases || Object.keys(config.databases).length === 0) {
+    console.error("❌ 'databases' must be a non-empty object in config.");
     process.exit(1);
   }
 }
@@ -34,18 +34,15 @@ export async function initializeNotionConfigFile(): Promise<void> {
   }
 
   const configPath = path.join(process.cwd(), "notion.config.ts");
-  const template = `// Notion ORM config
-// Set NOTION_API_KEY in your .env file
+  const template = `import type { NotionConfigType } from "@elumixor/notion-orm";
 
-const config = {
+export default {
   auth: process.env.NOTION_API_KEY ?? "",
-  databaseIds: [
-    // Add database IDs here, e.g.:
-    // "2ec26381fbfd80f78a11ceed660e9a07"
-  ],
-};
-
-export default config;
+  databases: {
+    // Add databases here, e.g.:
+    // tasks: "2ec26381fbfd80f78a11ceed660e9a07"
+  },
+} satisfies NotionConfigType;
 `;
   fs.writeFileSync(configPath, template);
   console.log("✅ Created notion.config.ts");

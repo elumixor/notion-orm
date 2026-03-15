@@ -32,7 +32,7 @@ export async function getNotionConfig(): Promise<NotionConfigType> {
   if (!configFile) {
     const auth = process.env.NOTION_API_KEY ?? process.env.NOTION_AUTH ?? process.env.NOTION_KEY;
     if (auth) {
-      cachedConfig = { auth, databaseIds: [] };
+      cachedConfig = { auth, databases: {} };
       return cachedConfig;
     }
     throw new Error(
