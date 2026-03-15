@@ -1,85 +1,53 @@
 import { pathToFileURL } from "url";
-import { NotionConfigType } from "./helpers";
-import { findConfigFile } from "./helpers.js";
+import type { NotionConfigType } from "./helpers";
+import { findConfigFile } from "./helpers";
 
 let cachedConfig: NotionConfigType | undefined = undefined;
 
-/**
- * Dynamically loads the user's notion.config file.
- * - Works with Bun (native TS support)
- * - Works with Node.js (ESM and CJS)
- * - Supports .ts, .js, .mjs config files
- */
-export async function loadUserConfig(absolutePath: string): Promise<any> {
-  // Detect if we're running in Bun
-  const isBun = typeof (globalThis as any).Bun !== "undefined";
-
-  // 1) Try dynamic import first (works for Bun with .ts, Node with .js/.mjs)
+export async function loadUserConfig(absolutePath: string): Promise<unknown> {
+  const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
   try {
-    // For Bun, use direct import which handles TypeScript natively
-    // For Node, convert to file URL for proper ESM loading
     const importPath = isBun ? absolutePath : pathToFileURL(absolutePath).href;
     const mod = await import(importPath);
     return mod.default ?? mod;
-  } catch (err) {
-    throw new Error(
-      `Failed to load config from '${absolutePath}': \n       ${err}`
-    );
+  } catch (e) {
+    throw new Error(`Failed to load config from '${absolutePath}': \n       ${e}`);
   }
 }
 
-export async function loadConfig(
-  configPath: string
-): Promise<NotionConfigType> {
+export async function loadConfig(configPath: string): Promise<NotionConfigType> {
   try {
     const config = await loadUserConfig(configPath);
-    return config;
-  } catch (error: any) {
-    throw new Error(
-      `Failed to load config from ${configPath}: ${error.message}`
-    );
+    return config as NotionConfigType;
+  } catch (error) {
+    throw new Error(`Failed to load config from ${configPath}: ${(error as Error).message}`);
   }
 }
 
 export async function getNotionConfig(): Promise<NotionConfigType> {
-  if (cachedConfig) {
-    return cachedConfig;
-  }
+  if (cachedConfig) return cachedConfig;
 
-  // Try to find config file
   const configFile = await findConfigFile();
 
   if (!configFile) {
-    // Fallback to environment variable
-    const authFromEnv = process.env.NOTION_AUTH || process.env.NOTION_KEY;
-    if (authFromEnv) {
-      const config = {
-        auth: authFromEnv,
-        databaseIds: [], // You might want to handle this differently
-      };
-      cachedConfig = config;
-      return config;
+    const auth = process.env.NOTION_API_KEY ?? process.env.NOTION_AUTH ?? process.env.NOTION_KEY;
+    if (auth) {
+      cachedConfig = { auth, databaseIds: [] };
+      return cachedConfig;
     }
-
     throw new Error(
-      "No notion.config.js/ts file found and no NOTION_AUTH environment variable set. " +
-        "Please create a config file or set the NOTION_AUTH environment variable."
+      "No notion.config.ts found and no NOTION_API_KEY environment variable set. " +
+        "Create a config file or set NOTION_API_KEY.",
     );
   }
 
   const config = await loadConfig(configFile.path);
+  if (!config.auth) throw new Error("Missing 'auth' field in notion config");
 
-  // Validate config
-  if (!config.auth) {
-    throw new Error("Missing 'auth' field in notion config");
-  }
-
-  // Cache the config
   cachedConfig = config;
   return config;
 }
 
-// Clear cache (useful for testing or config updates)
 export function clearConfigCache(): void {
   cachedConfig = undefined;
 }

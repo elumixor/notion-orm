@@ -1,6 +1,8 @@
 node_modules
 build
 .env
+.env.local
 package-lock.json
 .npmignore
-.env.local
+generated/
+prisma/dev.db
