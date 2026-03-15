@@ -24,8 +24,8 @@ import type { NotionConfigType } from "@elumixor/notion-orm";
 export default {
   auth: process.env.NOTION_API_KEY ?? "",
   databases: {
-    tasks: "2ec26381fbfd80f78a11ceed660e9a07",
-    people: "abcdef1234567890abcdef1234567890",
+    tasks: "your-notion-tasks-database-id",
+    people: "your-notion-people-database-id",
   },
 } satisfies NotionConfigType;
 ```
@@ -76,7 +76,10 @@ const task = await notion.tasks.findUnique({ where: { id: "page-id" } });
 
 // Page-by-page (UI pagination)
 const page1 = await notion.tasks.paginate({ take: 20 });
-const page2 = await notion.tasks.paginate({ take: 20, after: page1.nextCursor });
+const page2 = await notion.tasks.paginate({
+  take: 20,
+  after: page1.nextCursor,
+});
 // => { data, nextCursor, hasMore }
 
 // Streaming all results in batches (AsyncIterable)
@@ -85,7 +88,9 @@ for await (const task of notion.tasks.findMany({ stream: 50 })) {
 }
 
 // Count
-const total = await notion.tasks.count({ where: { status: { equals: "Done" } } });
+const total = await notion.tasks.count({
+  where: { status: { equals: "Done" } },
+});
 ```
 
 ### Select / omit
@@ -153,11 +158,11 @@ notion add <name> <database-id-or-url>   Add a database and generate its types
 
 ## Config options
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `auth` | `string` | — | Notion integration token |
-| `databases` | `Record<string, string>` | — | Map of name → database ID |
-| `outputDir` | `string` | `"generated/notion-orm"` | Output directory (relative to project root) |
+| Field       | Type                     | Default                  | Description                                 |
+| ----------- | ------------------------ | ------------------------ | ------------------------------------------- |
+| `auth`      | `string`                 | —                        | Notion integration token                    |
+| `databases` | `Record<string, string>` | —                        | Map of name → database ID                   |
+| `outputDir` | `string`                 | `"generated/notion-orm"` | Output directory (relative to project root) |
 
 ## Environment
 
