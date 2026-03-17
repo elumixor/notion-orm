@@ -44,9 +44,6 @@ Generates `generated/notion-orm/` with a typed client per database and an `index
 import { NotionORM } from "../generated/notion-orm";
 
 const notion = new NotionORM(process.env.NOTION_API_KEY);
-
-// or with a config object
-const notion = new NotionORM({ auth: process.env.NOTION_API_KEY });
 ```
 
 ## API

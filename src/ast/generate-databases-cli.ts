@@ -104,7 +104,7 @@ function writeNotionORMFile(databasesDirPath: string, databasesMetadata: CachedD
   if (!fs.existsSync(databasesDirPath)) fs.mkdirSync(databasesDirPath, { recursive: true });
 
   if (databasesMetadata.length === 0) {
-    writeWithJs(notionORMFile, `export class NotionORM {\n  constructor(_auth: string | { auth: string }) {}\n}\n`);
+    writeWithJs(notionORMFile, `export class NotionORM {\n  constructor(_auth: string) {}\n}\n`);
     return;
   }
 
@@ -117,10 +117,10 @@ function writeNotionORMFile(databasesDirPath: string, databasesMetadata: CachedD
     .join("\n");
 
   const assignments = databasesMetadata
-    .map(({ camelCaseName }) => `    this.${camelCaseName} = ${camelCaseName}(typeof auth === "string" ? auth : auth.auth);`)
+    .map(({ camelCaseName }) => `    this.${camelCaseName} = ${camelCaseName}(auth);`)
     .join("\n");
 
-  const tsCode = `${imports}\n\nexport class NotionORM {\n${properties}\n\n  constructor(auth: string | { auth: string }) {\n${assignments}\n  }\n}\n`;
+  const tsCode = `${imports}\n\nexport class NotionORM {\n${properties}\n\n  constructor(auth: string) {\n${assignments}\n  }\n}\n`;
   writeWithJs(notionORMFile, tsCode);
 }
 
