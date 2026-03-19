@@ -22,6 +22,8 @@ export function buildPropertyValueForAddPage(args: {
     return phoneNumberCall({ value });
   } else if (type === "url" && typeof value === "string") {
     return urlCall({ url: value });
+  } else if (type === "relation" && Array.isArray(value)) {
+    return relationCall({ ids: value });
   } else if (type === "checkbox" && typeof value === "boolean") {
     return checkboxCall({ checked: value });
   } else if (type === "title" && typeof value === "string") {
@@ -116,4 +118,8 @@ const checkboxCall = (args: { checked: boolean }) => {
 const emailCall = (args: { value: string }) => {
   const { value } = args;
   return { email: value };
+};
+
+const relationCall = (args: { ids: string[] }) => {
+  return { relation: args.ids.map((id) => ({ id })) };
 };
